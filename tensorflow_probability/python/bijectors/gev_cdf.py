@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""GEV bijector."""
+"""GeneralizedExtremeValue bijector."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -33,42 +33,47 @@ __all__ = [
 
 class GeneralizedExtremeValueCDF(bijector.Bijector):
   """Compute `Y = g(X) = exp(-t(X))`, the GeneralizedExtremeValue CDF,
-  where `t(x) = (1 + shape * (x - loc) / scale) ) ^ (-1 / shape)`.
+  where `t(x) = (1 + conc * (x - loc) / scale) ) ** (-1 / conc)`.
 
-  This bijector maps inputs from `[-inf, inf]` to `[0, 1]`. The inverse of the
-  bijector applied to a uniform random variable `X ~ U(0, 1)` gives back a
-  random variable with the [Generalized extreme value distribution](
+  This bijector maps inputs from the domain to `[0, 1]`, where the domain is
+    * [loc - scale/conc, inf) when conc > 0;
+    * (-inf, loc - scale/conc] when conc < 0;
+    * (-inf, inf) when conc = 0;
+
+  The inverse of the bijector applied to a uniform random variable
+  `X ~ U(0, 1)` gives back a random variable with the
+  [Generalized extreme value distribution](
   https://https://en.wikipedia.org/wiki/Generalized_extreme_value_distribution):
 
   ```none
-  Y ~ GeneralizedExtremeValueCDF(loc, scale, shape)
-  t(y; loc, scale, shape) = (1 + shape * (y - loc) / scale) ) ^ (-1 / shape)
-  pdf(y; loc, scale, shape) = t(y; loc, scale, shape) ^ (1 + shape) * exp(
-  - t(y; loc, scale, shape) ) / scale
+  Y ~ GeneralizedExtremeValueCDF(loc, scale, conc)
+  t(y; loc, scale, conc) = (1 + conc * (y - loc) / scale) ) ** (-1 / conc)
+  pdf(y; loc, scale, conc) = t(y; loc, scale, conc) ** (1 + conc) * exp(
+  - t(y; loc, scale, conc) ) / scale
   ```
   """
 
   def __init__(self,
                loc=0.,
                scale=1.,
-               concentration=0.5,
+               concentration=0,
                validate_args=False,
-               name='gev_cdf'):
+               name='generalizedextremevalue_cdf'):
     """Instantiates the `GeneralizedExtremeValueCDF` bijector.
 
     Args:
       loc: Float-like `Tensor` that is the same dtype and is
         broadcastable with `scale` and `concentration`.
         This is `loc` in `Y = exp( -t(X) )`
-        where `t(x) = (1 + conc * (x - loc) / scale) ) ^ (-1 / conc)`.
+        where `t(x) = (1 + conc * (x - loc) / scale) ) ** (-1 / conc)`.
       scale: Positive Float-like `Tensor` that is the same dtype and is
         broadcastable with `loc` and `concentration`.
         This is `scale` in `Y = exp(-t(X))`
-        where `t(x) = (1 + conc * (x - loc) / scale) ) ^ (-1 / conc)`.
+        where `t(x) = (1 + conc * (x - loc) / scale) ) ** (-1 / conc)`.
       concentration: Nonzero float-like `Tensor` that is the same dtype and is
         broadcastable with `loc` and `scale`.
         This is `concentration` in `Y = exp(-t(X))`
-        where `t(x) = (1 + conc * (x - loc) / scale) ) ^ (-1 / conc)`.
+        where `t(x) = (1 + conc * (x - loc) / scale) ) ** (-1 / conc)`.
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
       name: Python `str` name given to ops managed by this object.
@@ -93,7 +98,7 @@ class GeneralizedExtremeValueCDF(bijector.Bijector):
   def loc(self):
     """
     The `loc` in `Y = exp( -t(X) )`
-    where `t(x) = (1 + conc * (x - loc) / scale) ) ^ (-1 / conc)`.
+    where `t(x) = (1 + conc * (x - loc) / scale) ) ** (-1 / conc)`.
     """
     return self._loc
 
@@ -101,7 +106,7 @@ class GeneralizedExtremeValueCDF(bijector.Bijector):
   def scale(self):
     """
     The `scale` in `Y = exp( -t(X) )`
-    where `t(x) = (1 + conc * (x - loc) / scale) ) ^ (-1 / conc)`.
+    where `t(x) = (1 + conc * (x - loc) / scale) ) ** (-1 / conc)`.
     """
     return self._scale
 
@@ -109,7 +114,7 @@ class GeneralizedExtremeValueCDF(bijector.Bijector):
   def concentration(self):
     """
     The `concentration` in `Y = exp( -t(X) )`
-    where `t(x) = (1 + conc * (x - loc) / scale) ) ^ (-1 / conc)`.
+    where `t(x) = (1 + conc * (x - loc) / scale) ) ** (-1 / conc)`.
     """
     return self._concentration
 
@@ -119,29 +124,50 @@ class GeneralizedExtremeValueCDF(bijector.Bijector):
 
   def _forward(self, x):
     with tf.control_dependencies(self._maybe_assert_valid_x(x)):
+      conc = tf.convert_to_tensor(self.concentration)
+      condition = tf.equal(conc, 0.)
+
       z = (x - self.loc) / self.scale
-      t = (1. + self.concentration * z) ** (-1 / self.concentration)
+      t = tf.where(condition, tf.exp(-z),
+                   tf.exp(-tf.math.log1p(z * conc) / conc))
       return tf.exp(-t)
 
   def _inverse(self, y):
     with tf.control_dependencies(self._maybe_assert_valid_y(y)):
       t = - tf.math.log(y)
-      z = 1. - t ** (-self.concentration)
-      return self.loc - self.scale * z / self.concentration
+
+      conc = tf.convert_to_tensor(self.concentration)
+      condition = tf.equal(conc, 0.)
+      z = tf.where(condition, -tf.math.log(t),
+                   tf.math.expm1(-tf.math.log(t) * conc) / conc)
+
+      return self.loc + self.scale * z
 
   def _inverse_log_det_jacobian(self, y):
     with tf.control_dependencies(self._maybe_assert_valid_y(y)):
-      dz = - self.scale / self.concentration
       t = - tf.math.log(y)
-      dt = dz * self.concentration * (t ** (-self.concentration - 1))
-      return tf.math.log(-dt / y)
+
+      conc = tf.convert_to_tensor(self.concentration)
+      condition = tf.equal(conc, 0.)
+      log_dt = tf.where(condition, -tf.math.log(t),
+                        (-conc - 1) * tf.math.log(t))
+
+      return tf.math.log(self.scale / y) + log_dt
 
   def _forward_log_det_jacobian(self, x):
     with tf.control_dependencies(self._maybe_assert_valid_x(x)):
       scale = tf.convert_to_tensor(self.scale)
-      z = (x - self.loc) / self.scale
-      t = (1. + self.concentration * z) ** (-1 / self.concentration)
-      return (self.concentration + 1) * tf.math.log(t) - t - tf.math.log(scale)
+      z = (x - self.loc) / scale
+
+      # if self.concentration == 0.:
+        # return -z - tf.exp(-z) - tf.math.log(scale)
+      conc = tf.convert_to_tensor(self.concentration)
+      condition = tf.equal(conc, 0.)
+      log_t = tf.where(condition, -z,
+                       -tf.math.log1p(z * conc) / conc)
+
+      # log_t = - tf.math.log1p(z * self.concentration) / self.concentration
+      return (conc + 1) * log_t - tf.exp(log_t) - tf.math.log(scale)
 
   def _maybe_assert_valid_x(self, x):
     if not self.validate_args:
@@ -170,9 +196,4 @@ class GeneralizedExtremeValueCDF(bijector.Bijector):
       assertions.append(assert_util.assert_positive(
           self.scale,
           message='Argument `scale` must be positive.'))
-    if is_init != tensor_util.is_ref(self.shape):
-      assertions.append(assert_util.assert_none_equal(
-          self.shape,
-          tf.constant(0, self.shape.dtype),
-          message='Argument `shape` must be nonzero. Use Gumbel_cdf instead.'))
     return assertions
