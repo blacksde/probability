@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Probability Authors.
+# Copyright 2020 The TensorFlow Probability Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,12 +27,12 @@ from tensorflow_probability.python.internal import tensor_util
 
 
 __all__ = [
-    'GEVCDF',
+    'GeneralizedExtremeValueCDF',
 ]
 
 
-class GEVCDF(bijector.Bijector):
-  """Compute `Y = g(X) = exp(-t(X))`, the GEV CDF,
+class GeneralizedExtremeValueCDF(bijector.Bijector):
+  """Compute `Y = g(X) = exp(-t(X))`, the GeneralizedExtremeValue CDF,
   where `t(x) = (1 + shape * (x - loc) / scale) ) ^ (-1 / shape)`.
 
   This bijector maps inputs from `[-inf, inf]` to `[0, 1]`. The inverse of the
@@ -41,7 +41,7 @@ class GEVCDF(bijector.Bijector):
   https://https://en.wikipedia.org/wiki/Generalized_extreme_value_distribution):
 
   ```none
-  Y ~ GEVCDF(loc, scale, shape)
+  Y ~ GeneralizedExtremeValueCDF(loc, scale, shape)
   t(y; loc, scale, shape) = (1 + shape * (y - loc) / scale) ) ^ (-1 / shape)
   pdf(y; loc, scale, shape) = t(y; loc, scale, shape) ^ (1 + shape) * exp(
   - t(y; loc, scale, shape) ) / scale
@@ -51,24 +51,24 @@ class GEVCDF(bijector.Bijector):
   def __init__(self,
                loc=0.,
                scale=1.,
-               shape=0.5,
+               concentration=0.5,
                validate_args=False,
                name='gev_cdf'):
-    """Instantiates the `GEVCDF` bijector.
+    """Instantiates the `GeneralizedExtremeValueCDF` bijector.
 
     Args:
       loc: Float-like `Tensor` that is the same dtype and is
-        broadcastable with `scale` and `shape`.
-        This is `loc` in `Y = exp(-t(X))`
-        where `t(x) = (1 + shape * (x - loc) / scale) ) ^ (-1 / shape)`.
+        broadcastable with `scale` and `concentration`.
+        This is `loc` in `Y = exp( -t(X) )`
+        where `t(x) = (1 + conc * (x - loc) / scale) ) ^ (-1 / conc)`.
       scale: Positive Float-like `Tensor` that is the same dtype and is
-        broadcastable with `loc` and `shape`.
+        broadcastable with `loc` and `concentration`.
         This is `scale` in `Y = exp(-t(X))`
-        where `t(x) = (1 + shape * (x - loc) / scale) ) ^ (-1 / shape)`.
-      shape: Nonzero float-like `Tensor` that is the same dtype and is
+        where `t(x) = (1 + conc * (x - loc) / scale) ) ^ (-1 / conc)`.
+      concentration: Nonzero float-like `Tensor` that is the same dtype and is
         broadcastable with `loc` and `scale`.
-        This is `shape` in `Y = exp(-t(X))`
-        where `t(x) = (1 + shape * (x - loc) / scale) ) ^ (-1 / shape)`.
+        This is `concentration` in `Y = exp(-t(X))`
+        where `t(x) = (1 + conc * (x - loc) / scale) ) ^ (-1 / conc)`.
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
       name: Python `str` name given to ops managed by this object.
@@ -76,14 +76,14 @@ class GEVCDF(bijector.Bijector):
     parameters = dict(locals())
     with tf.name_scope(name) as name:
       dtype = dtype_util.common_dtype(
-          [loc, scale, shape], dtype_hint=tf.float32)
+          [loc, scale, concentration], dtype_hint=tf.float32)
       self._loc = tensor_util.convert_nonref_to_tensor(
           loc, dtype=dtype, name='loc')
       self._scale = tensor_util.convert_nonref_to_tensor(
           scale, dtype=dtype, name='scale')
-      self._shape = tensor_util.convert_nonref_to_tensor(
-          shape, dtype=dtype, name='shape')
-      super(GEVCDF, self).__init__(
+      self._concentration = tensor_util.convert_nonref_to_tensor(
+          concentration, dtype=dtype, name='concentration')
+      super(GeneralizedExtremeValueCDF, self).__init__(
           validate_args=validate_args,
           forward_min_event_ndims=0,
           parameters=parameters,
@@ -92,26 +92,26 @@ class GEVCDF(bijector.Bijector):
   @property
   def loc(self):
     """
-    The `loc` in `Y = exp(-t(X))`
-    where `t(x) = (1 + shape * (x - loc) / scale) ) ^ (-1 / shape)`.
+    The `loc` in `Y = exp( -t(X) )`
+    where `t(x) = (1 + conc * (x - loc) / scale) ) ^ (-1 / conc)`.
     """
     return self._loc
 
   @property
   def scale(self):
     """
-    The `scale` in `Y = exp(-t(X))`
-    where `t(x) = (1 + shape * (x - loc) / scale) ) ^ (-1 / shape)`.
+    The `scale` in `Y = exp( -t(X) )`
+    where `t(x) = (1 + conc * (x - loc) / scale) ) ^ (-1 / conc)`.
     """
     return self._scale
 
   @property
-  def shape(self):
+  def concentration(self):
     """
-    The `shape` in `Y = exp(-t(X))`
-    where `t(x) = (1 + shape * (x - loc) / scale) ) ^ (-1 / shape)`.
+    The `concentration` in `Y = exp( -t(X) )`
+    where `t(x) = (1 + conc * (x - loc) / scale) ) ^ (-1 / conc)`.
     """
-    return self._shape
+    return self._concentration
 
   @classmethod
   def _is_increasing(cls):
@@ -120,35 +120,35 @@ class GEVCDF(bijector.Bijector):
   def _forward(self, x):
     with tf.control_dependencies(self._maybe_assert_valid_x(x)):
       z = (x - self.loc) / self.scale
-      t = (tf.ones_like(z) + self.shape * z) ** (-1 / self.shape)
+      t = (1. + self.concentration * z) ** (-1 / self.concentration)
       return tf.exp(-t)
 
   def _inverse(self, y):
     with tf.control_dependencies(self._maybe_assert_valid_y(y)):
       t = - tf.math.log(y)
-      z = tf.ones_like(y) - t ** (-self.shape)
-      return self.loc - self.scale * z / self.shape
+      z = 1. - t ** (-self.concentration)
+      return self.loc - self.scale * z / self.concentration
 
   def _inverse_log_det_jacobian(self, y):
     with tf.control_dependencies(self._maybe_assert_valid_y(y)):
-      dz = - self.scale / self.shape
+      dz = - self.scale / self.concentration
       t = - tf.math.log(y)
-      dt = dz * self.shape * (t ** (-self.shape - 1))
+      dt = dz * self.concentration * (t ** (-self.concentration - 1))
       return tf.math.log(-dt / y)
 
   def _forward_log_det_jacobian(self, x):
     with tf.control_dependencies(self._maybe_assert_valid_x(x)):
       scale = tf.convert_to_tensor(self.scale)
       z = (x - self.loc) / self.scale
-      t = (tf.ones_like(z) + self.shape * z) ** (-1 / self.shape)
-      return (self.shape + 1) * tf.math.log(t) - t - tf.math.log(scale)
+      t = (1. + self.concentration * z) ** (-1 / self.concentration)
+      return (self.concentration + 1) * tf.math.log(t) - t - tf.math.log(scale)
 
   def _maybe_assert_valid_x(self, x):
     if not self.validate_args:
       return []
     return [assert_util.assert_less_equal(
-        self.shape * self.loc - self.scale,
-        x * self.shape,
+        self.concentration * self.loc - self.scale,
+        x * self.concentration,
         message='Forward transformation input must be inside domain.')]
 
   def _maybe_assert_valid_y(self, y):
