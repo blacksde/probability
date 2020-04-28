@@ -66,6 +66,7 @@ multi_substrate_py_library(
         ":generalized_pareto",
         ":geometric",
         ":gumbel",
+        ":gev",
         ":half_cauchy",
         ":half_normal",
         ":half_student_t",
@@ -597,6 +598,24 @@ multi_substrate_py_library(
         # numpy dep,
         # tensorflow dep,
         "//tensorflow_probability/python/bijectors:gumbel_cdf",
+        "//tensorflow_probability/python/bijectors:identity",
+        "//tensorflow_probability/python/bijectors:invert",
+        "//tensorflow_probability/python/internal:distribution_util",
+        "//tensorflow_probability/python/internal:dtype_util",
+        "//tensorflow_probability/python/internal:tensor_util",
+    ],
+)
+
+multi_substrate_py_library(
+    name = "gev",
+    srcs = ["gev.py"],
+    deps = [
+        ":kullback_leibler",
+        ":transformed_distribution",
+        ":uniform",
+        # numpy dep,
+        # tensorflow dep,
+        "//tensorflow_probability/python/bijectors:gev_cdf",
         "//tensorflow_probability/python/bijectors:identity",
         "//tensorflow_probability/python/bijectors:invert",
         "//tensorflow_probability/python/internal:distribution_util",
@@ -2065,6 +2084,18 @@ multi_substrate_py_test(
 )
 
 multi_substrate_py_test(
+    name = "gev_test",
+    srcs = ["gev_test.py"],
+    deps = [
+        # numpy dep,
+        # scipy dep,
+        # tensorflow dep,
+        "//tensorflow_probability",
+        "//tensorflow_probability/python/internal:test_util",
+    ],
+)
+
+multi_substrate_py_test(
     name = "half_cauchy_test",
     srcs = ["half_cauchy_test.py"],
     numpy_tags = ["notap"],
@@ -3011,6 +3042,7 @@ exports_files(
         "geometric.py",
         "geometric_test.py",
         "gumbel.py",
+        "gev.py",
         "half_cauchy.py",
         "half_normal.py",
         "half_student_t.py",

@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Probability Authors.
+# Copyright 2020 The TensorFlow Probability Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -222,8 +222,8 @@ class GeneralizedExtremeValue(transformed_distribution.TransformedDistribution):
     mean_z = tf.where(equal_zero,
                       np.euler_gamma*tf.ones_like(conc),
                       tf.where(less_than_one,
-                               tf.exp(tf.math.lgamma(1. - conc)),
-                               np.infty*tf.ones_like(conc))
+                               tf.math.expm1(tf.math.lgamma(1. - conc)) / conc,
+                               np.inf*tf.ones_like(conc))
                       )
 
     return self.loc + self.scale * mean_z
@@ -237,11 +237,11 @@ class GeneralizedExtremeValue(transformed_distribution.TransformedDistribution):
     g2 = tf.exp(tf.math.lgamma(1. - 2.*conc))
 
     std_z = tf.where(equal_zero,
-                    tf.ones_like(conc) * np.pi / np.sqrt(6),
-                    tf.where(less_than_half,
-                             tf.math.sqrt(g2 - g1_square) / conc,
-                             np.infty*tf.ones_like(conc))
-                    )
+                     tf.ones_like(conc) * np.pi / np.sqrt(6),
+                     tf.where(less_than_half,
+                              tf.math.sqrt(g2 - g1_square) / tf.abs(conc),
+                              np.inf*tf.ones_like(conc))
+                     )
 
     return self.scale * tf.ones_like(self.loc) * std_z
 
@@ -252,7 +252,7 @@ class GeneralizedExtremeValue(transformed_distribution.TransformedDistribution):
     # Use broadcasting rules to calculate the full broadcast sigma.
     mode_z = tf.where(condition,
                       tf.zeros_like(conc),
-                      tf.exp( -conc * tf.math.log1p) /conc)
+                      tf.math.expm1(-conc * tf.math.log1p(conc)) /conc)
 
     return self.loc + self.scale * mode_z
 
