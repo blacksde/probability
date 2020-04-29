@@ -208,8 +208,8 @@ class GeneralizedExtremeValue(transformed_distribution.TransformedDistribution):
       z = (x - self.loc) / scale
 
       conc = tf.convert_to_tensor(self.concentration)
-      condition = tf.equal(conc, 0.)
-      log_t = tf.where(condition, -z,
+      equal_zero = tf.equal(conc, 0.)
+      log_t = tf.where(equal_zero, -z,
                        -tf.math.log1p(z * conc) / conc)
 
       return (conc + 1) * log_t - tf.exp(log_t) - tf.math.log(scale)
@@ -247,10 +247,10 @@ class GeneralizedExtremeValue(transformed_distribution.TransformedDistribution):
 
   def _mode(self):
     conc = tf.convert_to_tensor(self.concentration)
-    condition = tf.equal(conc, 0.)
+    equal_zero = tf.equal(conc, 0.)
 
     # Use broadcasting rules to calculate the full broadcast sigma.
-    mode_z = tf.where(condition,
+    mode_z = tf.where(equal_zero,
                       tf.zeros_like(conc),
                       tf.math.expm1(-conc * tf.math.log1p(conc)) /conc)
 
