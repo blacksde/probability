@@ -88,7 +88,7 @@ class GeneralizedExtremeValueCDF(bijector.Bijector):
       self._concentration = tensor_util.convert_nonref_to_tensor(
           concentration, dtype=dtype, name='concentration')
       self._tol = tensor_util.convert_nonref_to_tensor(
-          tol, dtype=dtype, name='concentration')
+          tol, dtype=dtype, name='tolerance')
       super(GeneralizedExtremeValueCDF, self).__init__(
           validate_args=validate_args,
           forward_min_event_ndims=0,
